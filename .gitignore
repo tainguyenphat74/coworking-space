@@ -14,5 +14,3 @@ credentials
 /analytics/env
 **/**/__pycache__
 screenshots
-infra
-.github

@@ -36,7 +36,7 @@ For this project, you are a DevOps engineer who will be collaborating with a tea
 7. Screenshot of `kubectl describe deployment <SERVICE_NAME>`
 8. All Kubernetes config files used for deployment (ie YAML files)
 9. Screenshot of AWS CloudWatch logs for the application
-10. `README.md`.
+10. `README.md`. You are reading it.
 
 ### Setup
 #### 1. Configure a Database
@@ -57,11 +57,12 @@ This should set up a Postgre deployment at `<SERVICE_NAME>-postgresql.default.sv
 By default, it will create a username `postgres`. The password can be retrieved with the following command:
 ```bash
 export POSTGRES_PASSWORD=$(kubectl get secret --namespace default <SERVICE_NAME>-postgresql -o jsonpath="{.data.postgres-password}" | base64 -d)
-
-echo $POSTGRES_PASSWORD
 ```
 
-<sup><sub>* The instructions are adapted from [Bitnami's PostgreSQL Helm Chart](https://artifacthub.io/packages/helm/bitnami/postgresql).</sub></sup>
+Test postgressql password was exported successfully.
+```bash
+echo $POSTGRES_PASSWORD
+```
 
 3. Test Database Connection
 The database is accessible within the cluster. This means that when you will have some issues connecting to it via your local environment. You can either connect to a pod that has access to the cluster _or_ connect remotely via [`Port Forwarding`](https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/)
@@ -83,36 +84,43 @@ We will need to run the seed files in `db/` in order to create the tables and po
 
 ```bash
 kubectl port-forward --namespace default svc/<SERVICE_NAME>-postgresql 5432:5432 &
-    PGPASSWORD="$POSTGRES_PASSWORD" psql --host 127.0.0.1 -U postgres -d postgres -p 5432 < <FILE_NAME.sql>
+    PGPASSWORD="$POSTGRES_PASSWORD" psql --host 127.0.0.1 -U postgres -d postgres -p 5432 < 1_create_tables.sql
+
+kubectl port-forward --namespace default svc/<SERVICE_NAME>-postgresql 5432:5432 &
+    PGPASSWORD="$POSTGRES_PASSWORD" psql --host 127.0.0.1 -U postgres -d postgres -p 5432 < 2_seed_users.sql
+
+kubectl port-forward --namespace default svc/<SERVICE_NAME>-postgresql 5432:5432 &
+    PGPASSWORD="$POSTGRES_PASSWORD" psql --host 127.0.0.1 -U postgres -d postgres -p 5432 < 3_seed_tokens.sql
 ```
 
-### 2. Running the Analytics Application Locally
-In the `analytics/` directory:
-
-1. Install dependencies
+### 2. Running the Analytics Application with CodeBuild
+1. Check docker installed. If you have docker desktop installed, be sure to open it.
 ```bash
-pip install -r requirements.txt
+docker --version
 ```
-2. Run the application (see below regarding environment variables)
+
+2. Run CodeBuild
+* Go to AWS CodeBuild console.
+* Select the project to build.
+* Click the `Start build` button.
+After build process successfully. Then run these commands to deploy:
+```bash 
+$ kubectl apply -f analytics/deployment/deployment.yaml
+
+$ kubectl apply -f analytics/deployment/service.yaml
+
+$ kubectl apply -f analytics/deployment/configmap.yaml
+
+$ kubectl apply -f analytics/deployment/secret.yaml
+```
+
+### 3. Verifying The Application
+
+Get the application URL:
 ```bash
-<ENV_VARS> python app.py
+export BASE_URL=$(kubectl get services analytics --output jsonpath='{.status.loadBalancer.ingress[0].hostname}')
 ```
 
-There are multiple ways to set environment variables in a command. They can be set per session by running `export KEY=VAL` in the command line or they can be prepended into your command.
-
-* `DB_USERNAME`
-* `DB_PASSWORD`
-* `DB_HOST` (defaults to `127.0.0.1`)
-* `DB_PORT` (defaults to `5432`)
-* `DB_NAME` (defaults to `postgres`)
-
-If we set the environment variables by prepending them, it would look like the following:
-```bash
-DB_USERNAME=username_here DB_PASSWORD=password_here python app.py
-```
-The benefit here is that it's explicitly set. However, note that the `DB_PASSWORD` value is now recorded in the session's history in plaintext. There are several ways to work around this including setting environment variables in a file and sourcing them in a terminal session.
-
-3. Verifying The Application
 * Generate report for check-ins grouped by dates
 `curl <BASE_URL>/api/reports/daily_usage`
 
